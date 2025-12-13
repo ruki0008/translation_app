@@ -1,5 +1,7 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:speech_to_text/speech_to_text.dart';
+import 'package:http/http.dart' as http;
 
 void main() {
   runApp(const MyApp());
@@ -11,29 +13,32 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Flutter Speech Demo',
+      title: '音声認識＋翻訳デモ',
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
         useMaterial3: true,
       ),
-      home: const SpeechToTextPage(),
+      home: const SpeechTranslatePage(),
     );
   }
 }
 
-class SpeechToTextPage extends StatefulWidget {
-  const SpeechToTextPage({super.key});
+class SpeechTranslatePage extends StatefulWidget {
+  const SpeechTranslatePage({super.key});
 
   @override
-  State<SpeechToTextPage> createState() => _SpeechToTextPageState();
+  State<SpeechTranslatePage> createState() => _SpeechTranslatePageState();
 }
 
-class _SpeechToTextPageState extends State<SpeechToTextPage> {
+class _SpeechTranslatePageState extends State<SpeechTranslatePage> {
   final SpeechToText _speechToText = SpeechToText();
+
   bool _speechEnabled = false;
-  String _lastWords = '';
+  String _recognizedText = '';
+  String _translatedText = '';
+
   String _currentLocaleId = '';
-  List<LocaleName> _localeNames = [];
+  List<LocaleName> _locales = [];
 
   @override
   void initState() {
@@ -41,109 +46,163 @@ class _SpeechToTextPageState extends State<SpeechToTextPage> {
     _initSpeech();
   }
 
-  /// 初期化
-  void _initSpeech() async {
+  /// 音声認識の初期化
+  Future<void> _initSpeech() async {
     _speechEnabled = await _speechToText.initialize(
-      onStatus: (status) {
-        print('Speech status: $status');
-      },
-      onError: (error) {
-        print('Speech error: $error');
-      },
+      onStatus: (status) => print("Speech status: $status"),
+      onError: (error) => print("Speech error: $error"),
     );
 
     if (_speechEnabled) {
-      _localeNames = await _speechToText.locales();
-
-      // 日本語を優先
-      final jaLocale = _localeNames.firstWhere(
-        (locale) => locale.localeId.startsWith('ja'),
-        orElse: () => _localeNames.first,
+      _locales = await _speechToText.locales();
+      final ja = _locales.firstWhere(
+        (l) => l.localeId.startsWith("ja"),
+        orElse: () => _locales.first,
       );
 
       setState(() {
-        _currentLocaleId = jaLocale.localeId;
+        _currentLocaleId = ja.localeId;
       });
     }
 
     setState(() {});
   }
 
-  /// 認識開始
-  void _startListening() async {
-    _lastWords = '';
+  /// 音声認識開始
+  Future<void> _startListening() async {
+    setState(() {
+      _recognizedText = '';
+      _translatedText = '';
+    });
+
     await _speechToText.listen(
-      onResult: (result) {
-        setState(() {
-          _lastWords = result.recognizedWords; // ← 正しい取り方
-        });
-      },
-      listenFor: const Duration(seconds: 30),
-      pauseFor: const Duration(seconds: 3),
       localeId: _currentLocaleId,
       partialResults: true,
-      cancelOnError: true,
-
-      /// ★ iOS で安定するモード
+      listenFor: const Duration(seconds: 30),
+      pauseFor: const Duration(seconds: 3),
       listenMode: ListenMode.dictation,
+      onResult: (result) async {
+        final text = result.recognizedWords;
+
+        setState(() {
+          _recognizedText = text;
+        });
+
+        // 翻訳
+        final translated = await translateText(text);
+        setState(() {
+          _translatedText = translated;
+        });
+      },
     );
   }
 
-  /// 認識停止
-  void _stopListening() async {
+  /// 音声認識停止
+  Future<void> _stopListening() async {
     await _speechToText.stop();
     setState(() {});
+  }
+
+  /// 翻訳（FastAPI サーバー連携版）
+  Future<String> translateText(String text) async {
+    if (text.isEmpty) return "";
+
+    try {
+      // FastAPI サーバーのURLに合わせる
+      final uri = Uri.parse('http://192.168.11.9:8000/translate');
+
+      final response = await http.post(
+        uri,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'text': text}),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return data['translation'] ?? '';
+      } else {
+        return '翻訳失敗: ${response.statusCode}';
+      }
+    } catch (e) {
+      return '翻訳エラー: $e';
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('音声認識アプリ'),
+        title: const Text("音声認識＋翻訳"),
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
       ),
-      body: Center(
+      body: Padding(
+        padding: const EdgeInsets.all(20),
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Padding(
-              padding: EdgeInsets.all(16),
-              child: Text(
-                'マイクを有効にして話し始めてください...',
-                style: TextStyle(fontSize: 20),
-              ),
+            const Text(
+              "🎤 話すと自動で文字起こし → 翻訳します",
+              style: TextStyle(fontSize: 18),
             ),
+            const SizedBox(height: 20),
+
+            /// 認識テキスト
             Expanded(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Text(
-                  _speechToText.isListening
-                      ? _lastWords
-                      : _speechEnabled
-                          ? (_lastWords.isEmpty ? 'タップして話し始める' : _lastWords)
-                          : '音声認識が利用できません',
-                  style: Theme.of(context).textTheme.headlineSmall,
-                  textAlign: TextAlign.center,
+              child: SingleChildScrollView(
+                child: Column(
+                  children: [
+                    const Text(
+                      "📝 文字起こし（日本語）",
+                      style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      _recognizedText.isEmpty
+                          ? "ここに文字起こしが表示されます"
+                          : _recognizedText,
+                      style: const TextStyle(fontSize: 22),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 30),
+
+                    /// 翻訳テキスト
+                    const Text(
+                      "🌐 翻訳結果",
+                      style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      _translatedText.isEmpty
+                          ? "ここに翻訳結果が表示されます"
+                          : _translatedText,
+                      style: const TextStyle(fontSize: 22, color: Colors.blue),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
                 ),
               ),
             ),
-            Padding(
-              padding: const EdgeInsets.all(8),
-              child: ElevatedButton.icon(
-                onPressed:
-                    _speechToText.isListening ? _stopListening : _startListening,
-                icon:
-                    Icon(_speechToText.isListening ? Icons.stop : Icons.mic),
-                label: Text(
-                    _speechToText.isListening ? '認識停止' : '認識開始'),
-                style: ElevatedButton.styleFrom(
-                  minimumSize: const Size(180, 70),
-                  textStyle: const TextStyle(fontSize: 22),
-                  backgroundColor: _speechToText.isListening
-                      ? Colors.redAccent
-                      : Colors.blueAccent,
-                  foregroundColor: Colors.white,
-                ),
+
+            const SizedBox(height: 20),
+
+            /// ボタン
+            ElevatedButton.icon(
+              onPressed: _speechToText.isListening
+                  ? _stopListening
+                  : _startListening,
+              icon: Icon(
+                _speechToText.isListening ? Icons.stop : Icons.mic,
+                size: 30,
+              ),
+              label: Text(
+                _speechToText.isListening ? "停止" : "話す",
+                style: const TextStyle(fontSize: 22),
+              ),
+              style: ElevatedButton.styleFrom(
+                minimumSize: const Size(200, 60),
+                backgroundColor: _speechToText.isListening
+                    ? Colors.redAccent
+                    : Colors.blueAccent,
+                foregroundColor: Colors.white,
               ),
             ),
           ],
