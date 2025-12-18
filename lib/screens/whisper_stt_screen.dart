@@ -48,14 +48,38 @@ class _WhisperTranslatePage extends State<WhisperTranslatePage> {
     });
 
     if (_audioPath != null && File(_audioPath!).existsSync()) {
-      final text =
-          await _apiService.uploadAndTranscribe(_audioPath!);
+      final result = await _apiService.transcribeAndTranslate(
+        _audioPath!,
+      );
 
-      setState(() {
-        _resultText = text ?? "文字起こしに失敗しました";
-      });
+      if (result != null) {
+        setState(() {
+          _resultText = "文字起こし: ${result['text']}\n翻訳結果: ${result['translation']}";
+        });
+      } else {
+        setState(() {
+          _resultText = "文字起こし/翻訳に失敗しました";
+        });
+      }
     }
   }
+  // Future<void> _stopRecording() async {
+  //   await _recorder.stop();
+
+  //   setState(() {
+  //     _isRecording = false;
+  //     _resultText = "文字起こし中...";
+  //   });
+
+  //   if (_audioPath != null && File(_audioPath!).existsSync()) {
+  //     final text =
+  //         await _apiService.uploadAndTranscribe(_audioPath!);
+
+  //     setState(() {
+  //       _resultText = text ?? "文字起こしに失敗しました";
+  //     });
+  //   }
+  // }
 
   @override
   void dispose() {
