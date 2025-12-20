@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'speech_translate_screen.dart';
 import 'whisper_stt_screen.dart';
+import 'whisper_stt_azure_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -34,6 +35,19 @@ class HomeScreen extends StatelessWidget {
                   context,
                   MaterialPageRoute(
                     builder: (_) => const WhisperTranslatePage(),
+                  ),
+                );
+              },
+            ),
+            const SizedBox(height: 20),
+            ElevatedButton.icon(
+              icon: const Icon(Icons.cloud),
+              label: const Text('Whisper Azure 翻訳'),
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const WhisperAzureTranslatePage(),
                   ),
                 );
               },
