@@ -12,7 +12,7 @@ class ApiService {
       });
 
       Response response = await _dio.post(
-        "$baseUrl/translate_transcribe",
+        "$baseUrl/whisper/onnx",
         data: formData,
       );
 

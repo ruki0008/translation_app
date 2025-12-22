@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:record/record.dart';
@@ -16,73 +17,101 @@ class _WhisperTranslatePage extends State<WhisperTranslatePage> {
   final ApiService _apiService = ApiService();
 
   bool _isRecording = false;
+  bool _isProcessing = false;
+
   String? _audioPath;
-  String _resultText = "ここに文字起こし結果が表示されます";
+  final StringBuffer _resultBuffer = StringBuffer();
+
+  Timer? _silenceTimer;
+  Timer? _amplitudeTimer;
+
+  static const double silenceThreshold = -40.0; // dB
+  static const Duration silenceDuration = Duration(seconds: 1);
 
   /// 録音開始
   Future<void> _startRecording() async {
-    if (await _recorder.hasPermission()) {
-      final dir = await getTemporaryDirectory();
-      _audioPath = "${dir.path}/record.m4a";
+    if (!await _recorder.hasPermission()) return;
 
-      await _recorder.start(
-        const RecordConfig(
-          encoder: AudioEncoder.aacLc,
-        ),
-        path: _audioPath!,
-      );
+    final dir = await getTemporaryDirectory();
+    _audioPath = "${dir.path}/record.m4a";
 
-      setState(() {
-        _isRecording = true;
-      });
-    }
+    await _recorder.start(
+      const RecordConfig(encoder: AudioEncoder.aacLc),
+      path: _audioPath!,
+    );
+
+    _startAmplitudeMonitoring();
+
+    setState(() {
+      _isRecording = true;
+    });
   }
 
-  /// 録音停止 → 文字起こし
-  Future<void> _stopRecording() async {
+  /// 振幅監視（無音検知）
+  void _startAmplitudeMonitoring() {
+    _amplitudeTimer?.cancel();
+
+    _amplitudeTimer = Timer.periodic(
+      const Duration(milliseconds: 200),
+      (_) async {
+        final amp = await _recorder.getAmplitude();
+        final db = amp.current;
+
+        if (db < silenceThreshold) {
+          _silenceTimer ??= Timer(silenceDuration, _autoStop);
+        } else {
+          _silenceTimer?.cancel();
+          _silenceTimer = null;
+        }
+      },
+    );
+  }
+
+  /// 無音による自動停止
+  Future<void> _autoStop() async {
+    if (!_isRecording) return;
+    await _stopRecording(auto: true);
+  }
+
+  /// 録音停止
+  Future<void> _stopRecording({bool auto = false}) async {
+    if (!_isRecording) return;
+
+    _amplitudeTimer?.cancel();
+    _silenceTimer?.cancel();
+
     await _recorder.stop();
 
     setState(() {
       _isRecording = false;
-      _resultText = "文字起こし中...";
+      _isProcessing = true;
     });
 
+    if (!auto) return; // 手動停止時は処理中断
+
     if (_audioPath != null && File(_audioPath!).existsSync()) {
-      final result = await _apiService.transcribeAndTranslate(
-        _audioPath!,
-      );
+      final result =
+          await _apiService.transcribeAndTranslate(_audioPath!);
+
+      if (!mounted) return;
 
       if (result != null) {
-        setState(() {
-          _resultText = "文字起こし: ${result['text']}\n翻訳結果: ${result['translation']}";
-        });
+        _resultBuffer.writeln("文字起こし: ${result['text']}");
+        _resultBuffer.writeln("翻訳結果: ${result['translation']}\n");
       } else {
-        setState(() {
-          _resultText = "文字起こし/翻訳に失敗しました";
-        });
+        _resultBuffer.writeln("文字起こし/翻訳に失敗しました\n");
       }
+
+      setState(() {
+        _isProcessing = false;
+      });
     }
   }
-  // Future<void> _stopRecording() async {
-  //   await _recorder.stop();
-
-  //   setState(() {
-  //     _isRecording = false;
-  //     _resultText = "文字起こし中...";
-  //   });
-
-  //   if (_audioPath != null && File(_audioPath!).existsSync()) {
-  //     final text =
-  //         await _apiService.uploadAndTranscribe(_audioPath!);
-
-  //     setState(() {
-  //       _resultText = text ?? "文字起こしに失敗しました";
-  //     });
-  //   }
-  // }
 
   @override
   void dispose() {
+    _amplitudeTimer?.cancel();
+    _silenceTimer?.cancel();
     _recorder.dispose();
     super.dispose();
   }
@@ -90,9 +119,7 @@ class _WhisperTranslatePage extends State<WhisperTranslatePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text("音声文字起こし"),
-      ),
+      appBar: AppBar(title: const Text("音声文字起こし")),
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -101,25 +128,34 @@ class _WhisperTranslatePage extends State<WhisperTranslatePage> {
             Expanded(
               child: SingleChildScrollView(
                 child: Text(
-                  _resultText,
+                  _resultBuffer.toString(),
                   style: const TextStyle(fontSize: 18),
                 ),
               ),
             ),
 
-            const SizedBox(height: 20),
+            const SizedBox(height: 16),
 
-            /// 開始・停止ボタン
+            /// ボタン
             ElevatedButton.icon(
               icon: Icon(_isRecording ? Icons.stop : Icons.mic),
-              label: Text(_isRecording ? "停止" : "録音開始"),
+              label: Text(
+                _isRecording
+                    ? "停止"
+                    : _isProcessing
+                        ? "処理中..."
+                        : "録音開始",
+              ),
               style: ElevatedButton.styleFrom(
                 backgroundColor:
                     _isRecording ? Colors.red : Colors.blue,
                 minimumSize: const Size(double.infinity, 50),
               ),
-              onPressed:
-                  _isRecording ? _stopRecording : _startRecording,
+              onPressed: _isProcessing
+                  ? null
+                  : _isRecording
+                      ? () => _stopRecording(auto: false)
+                      : _startRecording,
             ),
           ],
         ),

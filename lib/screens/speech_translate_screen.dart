@@ -108,7 +108,7 @@ class _SpeechTranslatePageState extends State<SpeechTranslatePage> {
 
   Future<String> translateText(String text) async {
     try {
-      final uri = Uri.parse('http://192.168.11.9:8000/translate');
+      final uri = Uri.parse('http://192.168.11.9:8000/speech/onnx');
       final response = await http.post(
         uri,
         headers: {'Content-Type': 'application/json'},

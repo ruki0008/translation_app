@@ -63,23 +63,6 @@ class _WhisperAzureTranslatePage extends State<WhisperAzureTranslatePage> {
       }
     }
   }
-  // Future<void> _stopRecording() async {
-  //   await _recorder.stop();
-
-  //   setState(() {
-  //     _isRecording = false;
-  //     _resultText = "文字起こし中...";
-  //   });
-
-  //   if (_audioPath != null && File(_audioPath!).existsSync()) {
-  //     final text =
-  //         await _apiService.uploadAndTranscribe(_audioPath!);
-
-  //     setState(() {
-  //       _resultText = text ?? "文字起こしに失敗しました";
-  //     });
-  //   }
-  // }
 
   @override
   void dispose() {

@@ -12,7 +12,7 @@ class AzureApiService {
       });
 
       Response response = await _dio.post(
-        "$baseUrl/translate_azure_transcribe",
+        "$baseUrl/whisper/azure",
         data: formData,
       );
 
