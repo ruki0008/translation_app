@@ -1,0 +1,46 @@
+{
+  "project_info": {
+    "project_number": "3436283578",
+    "project_id": "translation-app-a73ec",
+    "storage_bucket": "translation-app-a73ec.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:3436283578:android:030d07128cc53ac4f7e483",
+        "android_client_info": {
+          "package_name": "com.example.translation_app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "3436283578-u7f74l8jccco81bt58elrs984spc01du.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCYMDBYgBmBNorImIBs0vxiD06B6qTzjyk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "3436283578-u7f74l8jccco81bt58elrs984spc01du.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "3436283578-a5essuvd6pmssana8450enprdktkctae.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.hamaguchi.translationApp"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

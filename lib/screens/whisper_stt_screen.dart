@@ -3,7 +3,10 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:record/record.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 import 'api_service.dart';
+import 'custom_words_edit_screen.dart';
 
 class WhisperTranslatePage extends StatefulWidget {
   const WhisperTranslatePage({super.key});
@@ -25,15 +28,60 @@ class _WhisperTranslatePage extends State<WhisperTranslatePage> {
   Timer? _silenceTimer;
   Timer? _amplitudeTimer;
 
-  static const double silenceThreshold = -40.0; // dB
-  static const Duration silenceDuration = Duration(seconds: 1);
+  static const double silenceThreshold = -40.0;
+  static const Duration silenceDuration = Duration(seconds: 2);
 
-  /// 録音開始
+  /// 固有名詞入力フォーム
+  final TextEditingController _promptController = TextEditingController();
+
+  /// Firestore コレクション
+  final promptsRef = FirebaseFirestore.instance.collection("prompts");
+
+  @override
+  void dispose() {
+    _amplitudeTimer?.cancel();
+    _silenceTimer?.cancel();
+    _recorder.dispose();
+    _promptController.dispose();
+    super.dispose();
+  }
+
+  // ======================================================
+  // 🔹 固有名詞を Firestore に保存
+  // ======================================================
+  Future<void> _savePromptWord() async {
+    final text = _promptController.text.trim();
+    if (text.isEmpty) return;
+
+    await promptsRef.add({
+      "word": text,
+      "createdAt": DateTime.now(),
+    });
+
+    _promptController.clear();
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("固有名詞を保存しました")),
+    );
+  }
+
+  // ======================================================
+  // 🔹 Firestore の単語を Whisper に渡すため取得
+  // ======================================================
+  Future<String> _loadPromptWords() async {
+    final snap = await promptsRef.get();
+    final words = snap.docs.map((d) => d["word"]).join(", ");
+    return words;
+  }
+
+  // ======================================================
+  // 🔹 録音開始
+  // ======================================================
   Future<void> _startRecording() async {
     if (!await _recorder.hasPermission()) return;
 
     final dir = await getTemporaryDirectory();
-    _audioPath = "${dir.path}/record.m4a";
+    _audioPath = "${dir.path}/record_0.m4a";
 
     await _recorder.start(
       const RecordConfig(encoder: AudioEncoder.aacLc),
@@ -42,15 +90,16 @@ class _WhisperTranslatePage extends State<WhisperTranslatePage> {
 
     _startAmplitudeMonitoring();
 
-    setState(() {
-      _isRecording = true;
-    });
+    setState(() => _isRecording = true);
   }
 
-  /// 振幅監視（無音検知）
+  // ======================================================
+  // 🔹 無音検知でファイル分割
+  // ======================================================
   void _startAmplitudeMonitoring() {
-    _amplitudeTimer?.cancel();
+    int fileIndex = 1;
 
+    _amplitudeTimer?.cancel();
     _amplitudeTimer = Timer.periodic(
       const Duration(milliseconds: 200),
       (_) async {
@@ -58,7 +107,28 @@ class _WhisperTranslatePage extends State<WhisperTranslatePage> {
         final db = amp.current;
 
         if (db < silenceThreshold) {
-          _silenceTimer ??= Timer(silenceDuration, _autoStop);
+          _silenceTimer ??= Timer(silenceDuration, () async {
+            if (!_isRecording) return;
+
+            final dir = await getTemporaryDirectory();
+            final newPath = "${dir.path}/record_$fileIndex.m4a";
+            fileIndex++;
+
+            await _recorder.stop();
+            await _recorder.start(
+              const RecordConfig(encoder: AudioEncoder.aacLc),
+              path: newPath,
+            );
+
+            final oldFile =
+                File("${dir.path}/record_${fileIndex - 2}.m4a");
+
+            _audioPath = newPath;
+
+            if (oldFile.existsSync() && oldFile.lengthSync() > 1000) {
+              _sendFileForTranscription(oldFile);
+            }
+          });
         } else {
           _silenceTimer?.cancel();
           _silenceTimer = null;
@@ -67,14 +137,10 @@ class _WhisperTranslatePage extends State<WhisperTranslatePage> {
     );
   }
 
-  /// 無音による自動停止
-  Future<void> _autoStop() async {
-    if (!_isRecording) return;
-    await _stopRecording(auto: true);
-  }
-
-  /// 録音停止
-  Future<void> _stopRecording({bool auto = false}) async {
+  // ======================================================
+  // 🔹 録音停止
+  // ======================================================
+  Future<void> _stopRecording() async {
     if (!_isRecording) return;
 
     _amplitudeTimer?.cancel();
@@ -87,35 +153,42 @@ class _WhisperTranslatePage extends State<WhisperTranslatePage> {
       _isProcessing = true;
     });
 
-    if (!auto) return; // 手動停止時は処理中断
-
-    if (_audioPath != null && File(_audioPath!).existsSync()) {
-      final result =
-          await _apiService.transcribeAndTranslate(_audioPath!);
-
-      if (!mounted) return;
-
-      if (result != null) {
-        _resultBuffer.writeln("文字起こし: ${result['text']}");
-        _resultBuffer.writeln("翻訳結果: ${result['translation']}\n");
-      } else {
-        _resultBuffer.writeln("文字起こし/翻訳に失敗しました\n");
-      }
-
-      setState(() {
-        _isProcessing = false;
-      });
+    if (_audioPath != null &&
+        File(_audioPath!).existsSync() &&
+        File(_audioPath!).lengthSync() > 1000) {
+      await _sendFileForTranscription(File(_audioPath!));
     }
+
+    setState(() => _isProcessing = false);
   }
 
-  @override
-  void dispose() {
-    _amplitudeTimer?.cancel();
-    _silenceTimer?.cancel();
-    _recorder.dispose();
-    super.dispose();
+  // ======================================================
+  // 🔹 Whisper へ送信
+  //    Firestoreの固有名詞を一緒に渡す
+  // ======================================================
+  Future<void> _sendFileForTranscription(File file) async {
+    final promptWords = await _loadPromptWords();
+
+    final result = await _apiService.transcribeAndTranslate(
+      file.path,
+      prompt: promptWords, // ← ★ 追加
+    );
+
+    if (!mounted) return;
+
+    if (result != null) {
+      _resultBuffer.writeln("文字起こし: ${result['text']}");
+      _resultBuffer.writeln("翻訳結果: ${result['translation']}\n");
+    } else {
+      _resultBuffer.writeln("文字起こし/翻訳に失敗しました\n");
+    }
+
+    setState(() {});
   }
 
+  // ======================================================
+  // 🔹 UI
+  // ======================================================
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -124,7 +197,6 @@ class _WhisperTranslatePage extends State<WhisperTranslatePage> {
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
-            /// 結果表示
             Expanded(
               child: SingleChildScrollView(
                 child: Text(
@@ -134,9 +206,22 @@ class _WhisperTranslatePage extends State<WhisperTranslatePage> {
               ),
             ),
 
+            const SizedBox(height: 12),
+
+            ElevatedButton(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                      builder: (_) => const CustomWordsEditPage()),
+                );
+              },
+              child: const Text("固有名詞を登録・編集（最大20件）"),
+            ),
+
             const SizedBox(height: 16),
 
-            /// ボタン
+            // 録音ボタン
             ElevatedButton.icon(
               icon: Icon(_isRecording ? Icons.stop : Icons.mic),
               label: Text(
@@ -154,7 +239,7 @@ class _WhisperTranslatePage extends State<WhisperTranslatePage> {
               onPressed: _isProcessing
                   ? null
                   : _isRecording
-                      ? () => _stopRecording(auto: false)
+                      ? _stopRecording
                       : _startRecording,
             ),
           ],
