@@ -30,7 +30,6 @@ class _WhisperAzureTranslatePageState extends State<WhisperAzureTranslatePage>
   bool _isRecording = false;
   bool _isProcessing = false;
   int _remainingSeconds = 0;
-  bool _isRunning = false;
 
   Timer? _usageTimer;
   Timer? _silenceTimer;
@@ -176,13 +175,11 @@ class _WhisperAzureTranslatePageState extends State<WhisperAzureTranslatePage>
     _amplitudeTimer?.cancel();
 
     // ❗ ここを追加（重要）
-    _isRunning = false;
 
     try {
       await _ticketService.startTimer(context);
 
       // 🔹 強制的にカウントダウン再起動
-      _isRunning = true;
       _startCountdown();
 
     } catch (_) {
@@ -212,7 +209,6 @@ class _WhisperAzureTranslatePageState extends State<WhisperAzureTranslatePage>
   // -------- 録音停止（手動）--------
   Future<void> _stopRecording() async {
     _cancelAllTimers();
-    _isRunning = false;
 
     final remaining = await _ticketService.stopTimer(context);
     if (!mounted) return;
