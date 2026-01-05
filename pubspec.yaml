@@ -48,6 +48,11 @@ dependencies:
   cloud_firestore: ^6.1.0
 
   google_sign_in: ^6.2.1 
+  google_mobile_ads: ^5.0.0
+  shared_preferences: ^2.2.2
+
+  cloud_functions: ^6.0.5
+  in_app_purchase: ^3.2.3
 
 dev_dependencies:
   flutter_test:

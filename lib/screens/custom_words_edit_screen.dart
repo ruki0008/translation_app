@@ -62,11 +62,11 @@ class _CustomWordsEditPageState extends State<CustomWordsEditPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("固有名詞（最大20件）")),
+      appBar: AppBar(title: const Text("固有名詞（最大10件）")),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          for (int i = 0; i < 20; i++)
+          for (int i = 0; i < 10; i++)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 4),
               child: TextField(

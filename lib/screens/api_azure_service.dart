@@ -4,20 +4,28 @@ class AzureApiService {
   final Dio _dio = Dio();
   final String baseUrl = 'http://192.168.11.9:8000';
 
-  /// 音声アップロード → 文字起こし + 翻訳
-  Future<Map<String, String>?> transcribeAndTranslate(String filePath) async {
+  /// 音声アップロード → 文字起こし + 翻訳 + プロンプト対応
+  Future<Map<String, String>?> transcribeAndTranslate(
+    String filePath, {
+    String? prompt, // ← ★ 追加
+  }) async {
     try {
-      FormData formData = FormData.fromMap({
-        "file": await MultipartFile.fromFile(filePath, filename: "audio.m4a"),
+      final formData = FormData.fromMap({
+        "file": await MultipartFile.fromFile(
+          filePath,
+          filename: "audio.m4a",
+        ),
+
+        // 🔹 固有名詞などの辞書プロンプトを一緒に送信
+        if (prompt != null && prompt.isNotEmpty) "prompt": prompt,
       });
 
-      Response response = await _dio.post(
-        "$baseUrl/whisper/azure",
+      final Response response = await _dio.post(
+        "$baseUrl/whisper/azure", // ← 必要ならエンドポイント変更OK
         data: formData,
       );
 
       if (response.statusCode == 200) {
-        // サーバー側のキーに合わせて取得
         final transcript = response.data["transcript"] ?? "";
         final translation = response.data["translation"] ?? "";
 

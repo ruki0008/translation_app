@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'speech_translate_screen.dart';
-import 'whisper_stt_screen.dart';
 import 'whisper_stt_azure_screen.dart';
 
 class HomeScreen extends StatelessWidget {
@@ -29,7 +28,7 @@ class HomeScreen extends StatelessWidget {
           children: [
             ElevatedButton.icon(
               icon: const Icon(Icons.mic),
-              label: const Text('SpeechToText 翻訳'),
+              label: const Text('音声文字起こし翻訳無料'),
               onPressed: () {
                 Navigator.push(
                   context,
@@ -42,20 +41,7 @@ class HomeScreen extends StatelessWidget {
             const SizedBox(height: 20),
             ElevatedButton.icon(
               icon: const Icon(Icons.cloud),
-              label: const Text('Whisper 翻訳'),
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => const WhisperTranslatePage(),
-                  ),
-                );
-              },
-            ),
-            const SizedBox(height: 20),
-            ElevatedButton.icon(
-              icon: const Icon(Icons.cloud),
-              label: const Text('Whisper Azure 翻訳'),
+              label: const Text('音声文字起こし翻訳有料'),
               onPressed: () {
                 Navigator.push(
                   context,
